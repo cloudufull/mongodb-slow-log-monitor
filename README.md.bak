@@ -92,12 +92,7 @@ Alert ack :
           ```
      
      2.   ./go_mslow -rpt -start '2020-04-09 00:00:00' -host host15
-
           ![report by host](https://github.com/cloudufull/mongodb-slow-log-monitor/blob/master/11.png ''repote'')
           
 	  
-          ./go_mslow  -rptd 3 -mail_from "mg@alert.com" -mail_to "xxxx@pd.com,364263756@qq.com" -dc "beijing" 
-	   
-	   ![report by host](https://github.com/cloudufull/mongodb-slow-log-monitor/blob/master/22.png  ''repote'')
-
-	   
+          ./go_mslow  -rptd 3  -mail_from "mgwuxi@wz2.com" -mail_to "fuyunchao@pwrd.com,384863756@qq.com" -dc "hn-"
