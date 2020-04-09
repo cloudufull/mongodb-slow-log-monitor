@@ -69,11 +69,11 @@ Alert ack :
 
 ### example
 
-     1. ./go_mslow -msg /var/log/messages -time_format "Jan  2 15:04:05@0" -st 1000 -follow  1 -follow_batchsize 5000 -mail_from "mg@alert.com" -mail_to "xxxx@pd.com,364263756@qq.com" -dc "beijing" -acount 3
+1. ./go_mslow -msg /var/log/messages -time_format "Jan  2 15:04:05@0" -st 1000 -follow  1 -follow_batchsize 5000 -mail_from "mg@alert.com" -mail_to "xxxx@pd.com,364263756@qq.com" -dc "beijing" -acount 3
        
-         alert message like this:
+alert message like this:
 
-	 ```
+```	 
 	 +- sqlid:      97eb220da18c9b3676ef98859936931e
          +- hostname:   xxxhos
          +- databases:  dbN
@@ -89,15 +89,16 @@ Alert ack :
 	                  projection: { _id: 0, __v: 0 }, limit: 1, singleBatch: true, batchSize: 1 } planSummary: COLLSCAN keysExamined:0 docsExamined:1 cursorExhausted:1 
 			  keyUpdates:0 writeConflicts:0 numYields:1 nreturned:1 reslen:190 locks:{ Global: { acquireCount: { r: 4 } }, Database: { acquireCount: { r: 2 } }, 
 			  Collection: { acquireCount: { r: 2 } } } protocol:op_query 1561ms
-          ```
+```
      
-     2.   ./go_mslow -rpt -start '2020-04-09 00:00:00' -host host15
+2.   ./go_mslow -rpt -start '2020-04-09 00:00:00' -host host15
 
-          ![report by host](https://github.com/cloudufull/mongodb-slow-log-monitor/blob/master/11.png ''repote'')
+
+![image](https://github.com/cloudufull/mongodb-slow-log-monitor/blob/master/11.png)
           
 	  
-          ./go_mslow  -rptd 3 -mail_from "mg@alert.com" -mail_to "xxxx@pd.com,364263756@qq.com" -dc "beijing" 
+     ./go_mslow  -rptd 3 -mail_from "mg@alert.com" -mail_to "xxxx@pd.com,364263756@qq.com" -dc "beijing" 
 	   
-	   ![report by host](https://github.com/cloudufull/mongodb-slow-log-monitor/blob/master/22.png  ''repote'')
+![image](https://github.com/cloudufull/mongodb-slow-log-monitor/blob/master/22.png)
 
 	   
