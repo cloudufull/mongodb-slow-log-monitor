@@ -39,6 +39,7 @@ var sort =flag.String("sort","avg","repoty sort by avg or sort by cnt ")
 var hst =flag.String("host","","report print by host ")
 var debug =flag.Bool("v",false,"print more info ")
 var rptd = flag.Int("rptd",-1,"report auto ack sql detail to mail within N days ")
+var mongo_log = flag.Bool("pm",false," log producted by mongd not syslog  ")
 
 
 
@@ -53,7 +54,11 @@ func main() {
                 fmt.Fprint(os.Stderr,`         -msg   default /var/log/message `,"\n") 
                 fmt.Fprint(os.Stderr,`         -time_format   default "2006-01-02T15:04:05@[1]" messge log time format
                         eg:  when message log  time info like this "Dec 25 03:38:02 hn15 mongod.5703[378028]" 
-                             we should use -time_format "Jan  2 15:04:05@0" ,  "@0" means   time info start from column 0    `,"\n")
+                             we should use -time_format "Jan  2 15:04:05@0" ,  "@0" means   time info start from column 0    
+                             eg1 : time format  2006-01-02T15:04:05.000-0700  <=----------=>  msg like : 2020-11-12T04:30:01.615+0800 
+
+                             `,"\n")
+
                 fmt.Fprint(os.Stderr,`         -start   default ""  appoint time begin ,format like '2006-01-02 15:04:05'  `,"\n") 
                 fmt.Fprint(os.Stderr,`         -end     default ""  appoint time end ,format like '2006-01-02 15:04:05'  `,"\n") 
                 fmt.Fprint(os.Stderr,`         -last    default 0, analyze within last min message log `,"\n") 
@@ -87,6 +92,7 @@ func main() {
                 fmt.Fprint(os.Stderr,`                 -tr    default "",  acknowledge time range by host  `,"\n") 
                 fmt.Fprint(os.Stderr,`                 -C    default "",  ack reason   `,"\n") 
                 fmt.Fprint(os.Stderr,`         -v    default false,  print more info`,"\n") 
+                fmt.Fprint(os.Stderr,`         -pm   default false,  not use syslog message`,"\n") 
         }
         flag.Parse()
         
@@ -114,6 +120,7 @@ func main() {
            fmt.Println(*tm_start,t.Unix())
            start_flag=t.Unix()
         }
+
         if *tm_end!=""{
            //t, err = time.Parse("2006-01-02 15:04:05", *tm_end).In(localt)
            //t, err = time.ParseInLocation(TIME_LAYOUT, *tm_end, localt)
@@ -146,7 +153,7 @@ func main() {
         }  
         sqlite.Check_table()
         if *rpt {
-           //fmt.Println(start_flag,"---",end_flag)
+           fmt.Println(start_flag,"---",end_flag)
            sqlite.Report(int(start_flag),int(end_flag),0,*hst,*sort,*qid) 
            return
         }
@@ -205,22 +212,32 @@ func main() {
                 }
             }
             if n,_:=regexp.MatchString(` mongod\.\d+\[`,line);!n{
-               continue
+                  re:=regexp.MustCompile(` \[conn\d+\] `)
+                  sidx:=re.FindStringIndex(line) 
+                  if sidx!=nil && *mongo_log{
+                      line=fmt.Sprintf("%smongod.5703[1111111]:%s",line[0:sidx[0]],line[sidx[0]:])
+                  }else{
+                      continue
+                  }
             }
             line = strings.TrimSpace(line)
             z:=strings.Split(strings.Trim(line,"\n")," ")   
             if len(z)==0||len(line)==0{
                continue 
             }
-            tmstr:=strings.Join(z[col:]," ")[:len(fm)]+" "+fmt.Sprintf(time.Now().Format("2006"))
             var charge_fm string 
+            tmstr:=strings.Join(z[col:]," ")[:len(fm)]
+            charge_fm=fm
             if n,_:=regexp.MatchString("2006",fm);!n{
-               charge_fm=fm+" 2006"
+               tmstr=strings.Join(z[col:]," ")[:len(fm)]+" "+fmt.Sprintf(time.Now().Format("2006"))
+               fmt.Println(n);
+               charge_fm=charge_fm+" 2006"
             }
+            //fmt.Println(charge_fm," <=----------=> ",tmstr);
             t, _  := time.ParseInLocation(charge_fm, tmstr,time.Local)
             //fmt.Println(t,t.Unix(),end_flag,charge_fm," <=> ",tmstr)
             //localt, _ := time.LoadLocation("Local")
-            //fmt.Println(t.Format("2006-01-02 15:04:05")," <=>",tmstr,"<=>",charge_fm)
+            //fmt.Println(t.Format("2006-01-02 15:04:05.000+0700")," <=>",tmstr,"<=>",charge_fm)
             if end_flag!=0 && t.Unix()>end_flag{ break }
             if start_flag!=0{
                if t.Unix()>start_flag{
