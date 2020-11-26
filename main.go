@@ -212,10 +212,12 @@ func main() {
                 }
             }
             if n,_:=regexp.MatchString(` mongod\.\d+\[`,line);!n{
-                  re:=regexp.MustCompile(` \[conn\d+\] `)
-                  sidx:=re.FindStringIndex(line) 
-                  if sidx!=nil && *mongo_log{
+                  if *mongo_log{
+                     re:=regexp.MustCompile(` \[conn\d+\] `)
+                     sidx:=re.FindStringIndex(line) 
+                     if sidx!=nil{
                       line=fmt.Sprintf("%smongod.5703[1111111]:%s",line[0:sidx[0]],line[sidx[0]:])
+                     }
                   }else{
                       continue
                   }
