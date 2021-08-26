@@ -1,4 +1,4 @@
-module mslow
+module mongodb-slow-log-monitor-maste
 
 go 1.12
 

@@ -20,14 +20,13 @@ import (
 
 
 
-var init_sql map[string]string=make(map[string]string)
 
 
-func (sqlite *DB_save)Output(line string,slow_tm int,account int,ltm time.Time) {
+func (sqlite *DB_save)Output(line string,slow_tm int,account int,ltm time.Time,hst string) {
      //fmt.Println("===================================================")
      report:=true 
      mp:=Change_type(line)
-     hst:=Get_host(line)
+     //hst:=Get_host(line)
      var msg string
      var qid string
      if _,tm,host,trange:=sqlite.Find_ack("#host#"+hst);tm>0{
@@ -172,6 +171,7 @@ func Gettime_report(last_day int) (int64,int64) {
 
 
 func (sqlite *DB_save)Check_table(){
+     var init_sql map[string]string=make(map[string]string)
      init_sql["qidtime"]=`
          create table qidtime(qid VARCHAR(32),long int,qtm int,atm int);
          create index idx_qqt on qidtime(qid,qtm);
@@ -193,19 +193,58 @@ func (sqlite *DB_save)Check_table(){
         create table logpos(fl VARCHAR(200),pos int64);
         create index idxfl on logpos(fl);
      `
+
+     init_sql["conn_dic"]=`
+        create table conn_dic(host varchar(200),connid VARCHAR(200),client_addr VARCHAR(200),tm int);
+        create index idx_dic_con on conn_dic(connid,tm);
+        create index idx_dic_tm  on conn_dic(tm);
+        create index idx_dic_tm  on conn_dic(host,connid,tm);
+     `
       
-     tablst:=[4]string{"qidtime","qidsql","qidack","logpos"}
+     tablst:=[5]string{"qidtime","qidsql","qidack","logpos","conn_dic"}
      var cnt int64
      for _,tab:=range tablst{ 
          err := sqlite.db.QueryRow(`SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name = ?`,tab).Scan(&cnt)
          Checkerr(err)
          if cnt<=0{
                _,err=sqlite.db.Exec(init_sql[tab])
-               Checkerr(err)
+               if err == sql.ErrNoRows{ 
+                  Checkerr(err)
+               }
                //fmt.Println(init_sql[tab])
             } 
         
     }
+}
+
+
+func (sqlite *DB_save)Save_conn_dict(host string,cid string,cip string,tm int) {
+      _, err := sqlite.db.Exec(`insert into conn_dic(host,connid,client_addr,tm) values (?,?,?,?)`,host,cid,cip,tm)
+      if err != sql.ErrNoRows{
+         Checkerr(err)
+      }
+}
+
+
+func (sqlite *DB_save)Pop_cid(cid string,host string){
+      _, err := sqlite.db.Exec(`delete from conn_dic where connid=? and host=?`,cid,host) 
+      Checkerr(err)
+}
+
+
+
+func (sqlite *DB_save)Get_client_ip(cid string,hst string) string{
+      var cip string
+      err := sqlite.db.QueryRow(`select client_addr from conn_dic where connid=? and host=? order by tm desc limit 1 `,cid,hst).Scan(&cip) 
+      switch {
+         case err == sql.ErrNoRows:
+             if sqlite.Debug{fmt.Println("No client ip found for cid:",cid)}
+         case err != nil:
+             fmt.Println(`Get_client_ip`,err)
+         default:
+            return cip 
+      } 
+      return ""
 }
 
 
@@ -268,7 +307,6 @@ func (sqlite *DB_save)Find_ack(id string) (string, int64, string, string) {
         if err!= sql.ErrNoRows{Checkerr(err)}
      }else{
         err = sqlite.db.QueryRow(`select qid,acktime from qidack where qid=? `, id).Scan(&qid,&acktime)
-        Checkerr(err)
      }
      if err==nil && err!= sql.ErrNoRows{
         return qid,acktime,host,trange
@@ -573,8 +611,15 @@ func draw(dp *Dataset) {
 func (sqlite *DB_save)Get_fpos(fl string) int64 {
      var pos int64
      err := sqlite.db.QueryRow("select pos from logpos where fl=?", fl).Scan(&pos)
-     CheckWarning(err)
-     return pos
+     switch {
+         case err == sql.ErrNoRows:
+             fmt.Println("No pos found for log file ",fl)
+         case err != nil:
+             fmt.Println(`Get_fpos`,err)
+         default:
+            return pos
+     }
+     return 0
 }
 
 func (sqlite *DB_save)Update_fpos(fl string,pos int64) {

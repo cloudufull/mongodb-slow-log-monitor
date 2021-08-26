@@ -16,6 +16,9 @@ func (sqlite *DB_save)Format_output(query map[string]string,line string,account 
      optp:=Get_v(query,"optp")
      etime,_:=strconv.Atoi(Get_v(query,"ms"))
      sqlid:=gen_qid(query)
+     if sqlid==""{
+        sqlid=md5V3(fmt.Sprintf(`%s%s`,"xxerror",strconv.Itoa(int(time.Now().Unix()))))
+     }
      hst:=Get_v(query,"host")
      mp:=&Save_alert_st{
      qtm:int(ltm.Unix()),
@@ -41,6 +44,11 @@ func (sqlite *DB_save)Format_output(query map[string]string,line string,account 
         }
         return "",""
      }
+     re:=regexp.MustCompile(`(?P<h>\[)conn(?P<cid>\d+)(?P<e>\])`) 
+     cid:=re.FindStringSubmatch(line)[2]
+     cip:=sqlite.Get_client_ip(cid,hst)
+     newline:= fmt.Sprintf(`message come from client ip %s
+               %s`,cip,line)
      return sqlid,fmt.Sprintf(`
 +- sqlid:      %s
 +- hostname:   %s
@@ -64,7 +72,7 @@ func (sqlite *DB_save)Format_output(query map[string]string,line string,account 
    Get_v(query,"sort"),
    Get_v(query,"plan"),
    Get_v(query,"query_part"),
-   now,line)
+   now,newline)
   
 }
 
@@ -117,6 +125,11 @@ func gen_qid(query map[string]string) string {
      tab:=Get_v(query,"table")
      query_sql:=Get_v(query,"query_part")
      var qid string
+     defer func(){
+     if err:=recover();err!=nil{
+         fmt.Println("gen sql_id failed !! , log format error !! ")
+         }
+     }()
      if query_sql!=""{
         query_id:=get_query(query_sql)
         qid=fmt.Sprintf(`%s.%s.%s.%s.%s`,host,db,tab,optp,query_id )

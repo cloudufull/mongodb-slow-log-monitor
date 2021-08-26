@@ -54,7 +54,9 @@ func (q *Qt)scanQuoted(tp string) string{
                 flag= false
                }
          }
-         if r=="eof"{panic("missing terminating ' character ")}
+         if r=="eof"{
+            panic(fmt.Sprintf("missing terminating %s character ",tp))
+         }
      }
 ENDLOOP:
      return strings.Join(string_lst,"")

@@ -13,12 +13,12 @@ import (
         "strconv"
         "strings"
         "regexp"
-        "mslow/parse"
+        "mongodb-slow-log-monitor-maste/parse"
 )
 
 
 
-var message_log = flag.String("msg", "/var/log/message", "mongodb slow log file")
+var message_log = flag.String("msg", "/var/log/messages", "mongodb slow log file")
 var tm_formart = flag.String("time_format", "2006-01-02T15:04:05@1", "slow log time format and include columns number")
 var tm_start =flag.String("start","","time from ,format like '2006-01-02 15:04:05'")
 var tm_end =flag.String("end","","time end ,format like '2006-01-02 15:04:05' ")
@@ -40,6 +40,7 @@ var hst =flag.String("host","","report print by host ")
 var debug =flag.Bool("v",false,"print more info ")
 var rptd = flag.Int("rptd",-1,"report auto ack sql detail to mail within N days ")
 var mongo_log = flag.Bool("pm",false," log producted by mongd not syslog  ")
+var only_cid = flag.Bool("onlycid",false," only get cid map ")
 
 
 
@@ -55,7 +56,7 @@ func main() {
                 fmt.Fprint(os.Stderr,`         -time_format   default "2006-01-02T15:04:05@[1]" messge log time format
                         eg:  when message log  time info like this "Dec 25 03:38:02 hn15 mongod.5703[378028]" 
                              we should use -time_format "Jan  2 15:04:05@0" ,  "@0" means   time info start from column 0    
-                             eg1 : time format  2006-01-02T15:04:05.000-0700  <=----------=>  msg like : 2020-11-12T04:30:01.615+0800 
+                             eg1 : time format  2006-01-02T15:04:05.000-0800  <=----------=>  msg like : 2020-11-12T04:30:01.615+0800 
 
                              `,"\n")
 
@@ -152,6 +153,9 @@ func main() {
             return 
         }  
         sqlite.Check_table()
+
+   // ============> print report
+
         if *rpt {
            fmt.Println(start_flag,"---",end_flag)
            sqlite.Report(int(start_flag),int(end_flag),0,*hst,*sort,*qid) 
@@ -162,9 +166,27 @@ func main() {
            sqlite.Report_daily(*mail_from,*mail_to,*dc,*rptd)
            return
        }
+   // ============> update file pos
+
 
         var lastpos int64
         file, err := os.OpenFile(*message_log, os.O_RDWR, 0666)
+        parse.Checkerr(err)
+        
+
+         
+        var errline *string
+        defer func(){
+           if err:=recover();err!=nil{ 
+              fmt.Println(" cache exception (panic)..!! ",err,`when deal this line:`)
+              fmt.Println(*errline)
+              pos,err:=file.Seek(0, os.SEEK_CUR)
+              parse.Checkerr(err)
+              sqlite.Update_fpos(*message_log,pos)
+              fmt.Println(pos)
+           }
+        }() 
+
         if *fl==1{
             lastpos=sqlite.Get_fpos(*message_log)
             _,err=file.Seek(0,os.SEEK_END)
@@ -174,21 +196,24 @@ func main() {
                lastpos=0
             }
             _,err=file.Seek(lastpos,0)
+            parse.Checkerr(err)
             if *debug{fmt.Println(lastpos)}
         }
 
         if *fl==2{
             lastpos=sqlite.Get_fpos(*message_log)
             _,err=file.Seek(0,os.SEEK_END)
+            parse.Checkerr(err)
         }
         
+  // ===============> deal msg line
 
-        parse.Checkerr(err)
         buf := bufio.NewReader(file)
       
         readline:=0
         for {
             line, err := buf.ReadString('\n')
+            errline=&line
             if *fl>0{
                 readline=readline+1
                 if readline>=*bs{
@@ -211,45 +236,100 @@ func main() {
                     return
                 }
             }
-            if n,_:=regexp.MatchString(` mongod\.\d+\[`,line);!n{
-                  if *mongo_log{
-                     re:=regexp.MustCompile(` \[conn\d+\] `)
-                     sidx:=re.FindStringIndex(line) 
-                     if sidx!=nil{
-                      line=fmt.Sprintf("%smongod.5703[1111111]:%s",line[0:sidx[0]],line[sidx[0]:])
-                     }
-                  }else{
-                      continue
-                  }
-            }
+      // =======> filter mongodb log lines from syslog
+
+            if *mongo_log{
+                   re:=regexp.MustCompile(` \[conn\d+\] `)
+                   sidx:=re.FindStringIndex(line) 
+                   if sidx!=nil{
+                      line=fmt.Sprintf("%smongod.1234[1111111]:%s",line[0:sidx[0]],line[sidx[0]:])
+                   }
+            }else if  n,_:=regexp.MatchString(` mongod\.\d+\[`,line);!n{
+                  continue
+            } 
+
+
             line = strings.TrimSpace(line)
             z:=strings.Split(strings.Trim(line,"\n")," ")   
             if len(z)==0||len(line)==0{
                continue 
             }
+
+       // time parse 
             var charge_fm string 
             tmstr:=strings.Join(z[col:]," ")[:len(fm)]
             charge_fm=fm
             if n,_:=regexp.MatchString("2006",fm);!n{
                tmstr=strings.Join(z[col:]," ")[:len(fm)]+" "+fmt.Sprintf(time.Now().Format("2006"))
-               fmt.Println(n);
+               // fmt.Println(`---->`,n);
                charge_fm=charge_fm+" 2006"
             }
-            //fmt.Println(charge_fm," <=----------=> ",tmstr);
+               //fmt.Println(charge_fm," <=----------=> ",tmstr);
             t, _  := time.ParseInLocation(charge_fm, tmstr,time.Local)
-            //fmt.Println(t,t.Unix(),end_flag,charge_fm," <=> ",tmstr)
-            //localt, _ := time.LoadLocation("Local")
-            //fmt.Println(t.Format("2006-01-02 15:04:05.000+0700")," <=>",tmstr,"<=>",charge_fm)
+               //fmt.Println(t,t.Unix(),end_flag,charge_fm," <=> ",tmstr)
+               //localt, _ := time.LoadLocation("Local")
+               //fmt.Println(t.Format("2006-01-02 15:04:05.000+0800")," <=>",tmstr,"<=>",charge_fm)
+
+       // record connid
+          
+          re  := regexp.MustCompile(`(?P<head>.*)\s(?P<tag>connection accepted from )(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\:\d+)\s#(?P<connid>\d+)\s`)
+          match := re.FindStringSubmatch(line)
+          var cid string;var cip string;var hst string
+          match_flag:=false
+          if len(match)>0{
+             cid=match[4];cip=match[3]    
+             match_flag=true
+          }else{
+             re := regexp.MustCompile(`(?P<head>.*)\s(?P<tag>received client metadata from )(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\:\d+)\sconn(?P<connid>\d+)\:`)
+             match := re.FindStringSubmatch(line)
+             if len(match)>0{
+                 cid=match[4];cip=match[3]    
+                 match_flag=true
+             }
+          }
+          
+          // get hostname 
+          submsg:=line[len(tmstr)+1:len(line)]
+          re=regexp.MustCompile(`^\S+`)
+          hst=re.FindString(submsg)
+          if len(hst)==1{
+             hst="localhost"
+          }
+
+          if match_flag{ 
+             sqlite.Save_conn_dict(hst,cid,cip,int(t.Unix()))
+             if *debug && *only_cid{
+                fmt.Println(`====> new connect `,hst,cid,cip,int(t.Unix()))
+                fmt.Println(line)
+             }
+          }else{
+        
+              re = regexp.MustCompile(`(?P<head>.*)\[conn(?P<cid>\d+)\](?P<tag> end connection )(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\:\d+)`)
+              match = re.FindStringSubmatch(line)
+              if len(match)>0{
+                 sqlite.Pop_cid(match[2],hst)
+                  if *debug && *only_cid {fmt.Println(`end connect `,match[2],hst,`<====`)}
+              }
+          }
+
+       if regexp.MustCompile(` \[thread\d+\] `).MatchString(line) || regexp.MustCompile(` \[initandlisten\] `).MatchString(line){
+          continue 
+       }
+       if *only_cid{continue}  
+        
+       //  filter log message     
             if end_flag!=0 && t.Unix()>end_flag{ break }
             if start_flag!=0{
                if t.Unix()>start_flag{
-                 sqlite.Output(line,*slow_tm,*acount,t)
+                 sqlite.Output(line,*slow_tm,*acount,t,hst)
                 }
             }else{
-                sqlite.Output(line,*slow_tm,*acount,t)
+                sqlite.Output(line,*slow_tm,*acount,t,hst)
             }
         }
-        //fmt.Println(sqlite.Mail.Mail_from,"<-------")
+
+      // send mail alert !!! 
+      // fmt.Println(sqlite.Mail.Mail_from,"<-------")
 
         for _,v :=range sqlite.Mail.Mailbox { 
             msg:=strings.Join(v,"\n")
@@ -259,15 +339,6 @@ func main() {
             }
         }
          
-        defer func(){
-           if err:=recover();err!=nil{ 
-              fmt.Println(" cache exception (panic)..!! ",err)
-              pos,err:=file.Seek(0, os.SEEK_CUR)
-              parse.Checkerr(err)
-              sqlite.Update_fpos(*message_log,pos)
-              fmt.Println(pos)
-           }
-        }() 
          
 
         
